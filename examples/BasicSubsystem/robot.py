@@ -30,15 +30,28 @@ class SubsystemExample(StateSystem):
 
         self.test_motor.configurator.apply(test_motor_config)
 
+        # Used for timers
+        self.start_time = None
+
     @state 
-    def idle(self):
-        self.test_motor.stopMotor()
+    def run_for_duration(self, duration=1.0):
+        if self.start_time is None:
+            self.start_time = wpilib.Timer.getFPGATimestamp()
+        if wpilib.Timer.getFPGATimestamp() - self.start_time < duration:
+            self.test_motor.set(0.5)
+            return False
+        self.start_time = None
+        self.test_motor.stopMotor() 
         return True
 
     @state
-    def run_to_position(self):
-        self.test_motor.set_control(self.motion_magic_voltage.with_position(100))
+    def run_to_position(self, position=100.0):
+        self.test_motor.set_control(self.motion_magic_voltage.with_position(position))
         return abs(self.test_motor.get_closed_loop_error().value_as_double) < 0.1
+
+    def periodic(self):
+        super().periodic()
+        wpilib.SmartDashboard.putNumber("Position", self.test_motor.get_position().value_as_double)
 
 class Robot(wpilib.TimedRobot):
     def robotInit(self):
@@ -46,7 +59,10 @@ class Robot(wpilib.TimedRobot):
         self.controller = wpilib.XboxController(0)
     
     def teleopInit(self):
-        self.subsystem.queue_states("run_to_position", "idle")
+        self.subsystem.queue_states(
+            ("run_for_duration", {"duration": 10.0}),
+            ("run_to_position", {"position": 0.0})
+        )
 
 if __name__ == "__main__":
     wpilib.run(Robot)

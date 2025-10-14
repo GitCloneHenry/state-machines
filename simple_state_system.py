@@ -76,40 +76,47 @@ class StateSystem:
     def periodic(self):
         self._mark_super_called("periodic")
         with self._current_state_lock:
-            state = self._current_state
+            current = self._current_state
             queue = self._queue
 
-        if state:
+        if current:
+            name, args, kwargs = current
             try:
-                result = self._states[state]()
-                done = bool(result)
-                if result not in (True, False, None):
-                    wpilib.reportWarning(
-                        f"{state}() returned non-bool value: {result}"
-                    )
+                done: bool = self._states[name](*args, **kwargs)
                 if done and queue:
                     with self._current_state_lock:
-                        if self._current_state == queue[0]:
-                            queue.pop(0)
-                            self._current_state = queue[0] if queue else None
+                        queue.pop(0)
+                        self._current_state = queue[0] if queue else None
             except Exception as e:
-                wpilib.reportError(
-                    f"Error in state '{state}' of {type(self).__name__}: {e}"
-                )
+                wpilib.reportError(f"Error in state '{name}' of {type(self).__name__}: {e}")
 
     def queue_states(self, *states):
         with self._current_state_lock:
-            for state in states:
-                if state not in self._states:
-                    wpilib.reportError(
-                        f"Unknown state '{state}' for {type(self).__name__}"
-                    )
+            for s in states:
+                if isinstance(s, str):
+                    name, args, kwargs = s, (), {}
+                elif isinstance(s, tuple):
+                    name = s[0]
+                    if len(s) == 2 and not isinstance(s[1], dict):
+                        args, kwargs = (s[1],), {}
+                    elif len(s) == 2 and isinstance(s[1], dict):
+                        args, kwargs = (), s[1]
+                    elif len(s) == 3:
+                        args, kwargs = s[1], s[2]
+                    else:
+                        args, kwargs = (), {}
+                else:
+                    wpilib.reportError(f"Invalid state format: {s}")
                     continue
-                self._queue.append(state)
+
+                if name not in self._states:
+                    wpilib.reportError(f"Unknown state '{name}' for {type(self).__name__}")
+                    continue
+
+                self._queue.append((name, args, kwargs))
 
             if not self._current_state and self._queue:
                 self._current_state = self._queue[0]
-        return self
 
     def clear_queue(self):
         with self._current_state_lock:
