@@ -117,6 +117,33 @@ class StateSystem:
 
             if not self._current_state and self._queue:
                 self._current_state = self._queue[0]
+    
+    def queue_state(self, state, position=-1):
+        with self._current_state_lock:
+            if isinstance(state, str):
+                name, args, kwargs = state, (), {}
+            elif isinstance(state, tuple):
+                name = state[0]
+                if len(state) == 2 and not isinstance(state[1], dict):
+                    args, kwargs = (state[1],), {}
+                elif len(state) == 2 and isinstance(state[1], dict):
+                    args, kwargs = (), state[1]
+                elif len(state) == 3:
+                    args, kwargs = state[1], state[2]
+                else:
+                    args, kwargs = (), {}
+            else:
+                wpilib.reportError(f"Invalid state format: {state}")
+                return
+
+            if name not in self._states:
+                wpilib.reportError(f"Unknown state '{name}' for {type(self).__name__}")
+                return
+
+            self._queue.insert(position, (name, args, kwargs))
+
+        if self._queue:
+            self._current_state = self._queue[position]
 
     def clear_queue(self):
         with self._current_state_lock:
